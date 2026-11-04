@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel de Saúde ESP32 · FHIR</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* Paleta do Design System mare.IA / AgroSUS (Figma) */
+  --navy:#162029; --ardosia:#3f4c55; --cinza:#717783; --linha:#dfe4e8; --superficie:#eff3f4; --branco:#fbfdfc;
+  --laranja:#e97d3f; --laranja-claro:#f9e8d8; --laranja-escuro:#ca672b;
+  --azul:#467e95; --azul-ceu:#82c4dc; --azul-claro:#e7f4fa;
+  --vermelho:#c6504c; --verde:#519c71; --ambar:#c08d34;
+  /* nomes usados pelo script e pelos gráficos */
+  --bg:#f6f8f9; --card:#ffffff; --tx:var(--navy); --mut:var(--cinza); --bd:var(--linha);
+  --pri:var(--laranja); --ok:var(--verde); --warn:var(--ambar); --bad:var(--vermelho);
+  --l1:#467e95; --l2:#e97d3f;
+  --tit:"Poppins",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --txt:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"Roboto Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.45 var(--txt)}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:10px 24px;background:var(--card);border-bottom:1px solid var(--bd)}
+header .logo{height:36px;width:auto;display:block;margin-right:auto}
+header .acoes{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button,select,input{font:500 13px/1.2 var(--txt);border-radius:3px;border:1px solid var(--navy);background:var(--card);color:var(--navy);padding:8px 14px}
+button{cursor:pointer;transition:background .15s,border-color .15s,color .15s}
+button:hover:not(:disabled){background:var(--superficie)}
+button.pri{background:var(--laranja);border-color:var(--laranja);color:#fff;font-weight:600}
+button.pri:hover:not(:disabled){background:var(--laranja-escuro);border-color:var(--laranja-escuro)}
+button:disabled{opacity:.45;cursor:default}
+input{background:var(--superficie);border-color:var(--bd);color:var(--navy)}
+input::placeholder{color:var(--cinza)}
+input:focus{outline:none;border-color:var(--laranja);background:#fff}
+#estado{display:flex;align-items:center;gap:6px;color:var(--ardosia);font-size:13px;margin-right:6px}
+#estado i{width:9px;height:9px;border-radius:50%;background:var(--bad);display:inline-block}
+#estado.on i{background:var(--ok)}
+main{padding:24px;max-width:1300px;margin:auto}
+.titulo{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:8px;padding-bottom:14px;margin-bottom:16px;border-bottom:1px solid var(--bd)}
+.titulo h1{font:700 22px/1.2 var(--tit);color:var(--navy);margin:0}
+.versao{font:500 12px var(--mono);color:var(--azul);background:var(--azul-claro);border:1px solid var(--azul-ceu);border-radius:3px;padding:3px 8px}
+.fhir{margin-top:16px}
+.fhir .resumo{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:4px 0 10px}
+.fhir .resumo div{border:1px solid var(--bd);border-radius:3px;padding:8px 10px;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--mut);display:flex;flex-direction:column-reverse;gap:2px}
+.fhir .resumo b{font:700 20px/1.1 var(--tit);letter-spacing:0;color:var(--navy)}
+.fhir .resumo b.ok{color:var(--ok)}
+#fhirJson{height:260px;overflow:auto;background:var(--superficie);border:1px solid var(--bd);border-radius:3px;padding:8px 10px;font:12px/1.5 var(--mono);color:var(--ardosia);white-space:pre;margin:8px 0 0}
+#fhirSel{max-width:100%}
+select{background:var(--superficie);border-color:var(--bd)}
+.grade{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:16px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:4px;padding:16px}
+.card h2{font:600 12px/1.3 var(--tit);letter-spacing:.06em;text-transform:uppercase;color:var(--navy);margin:0 0 10px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.valor{font:700 32px/1.15 var(--tit);color:var(--navy);margin:4px 0}
+.valor small{font:400 14px var(--txt);color:var(--mut)}
+.sub{color:var(--mut);font-size:12px;min-height:18px}
+.tag{display:inline-flex;align-items:center;gap:6px;font:700 11px/1 var(--txt);letter-spacing:.05em;text-transform:uppercase;white-space:nowrap}
+.tag::before{content:"";width:14px;height:18px;background:var(--ico) center/contain no-repeat;display:none}
+.tag.ok{color:var(--ok);--ico:url("data:image/png;base64,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")} .tag.warn{color:var(--warn);--ico:url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACUAAAAwCAYAAACWhbMrAAAGlUlEQVR4AcxXfVBUVRQ/97739rHL1y4igkL6hzqAozPVX05Taf3TONl/kWOhqeAKpIgfrZYmCsSygjZM/uFUM4HWGJYT68jal+RYSh98h1EWQYJaKCuJC8juu5373u6yMirl4C6P+7sf5557z++dc+/hLYVJ+NCDBw9K7x+zn6usrmmoOH6yscJ+sqHCXtNQaa+p5zhkd9RX2B04vh0V1aiLqLQ7mnzwybS2prGi2tHgW8/38EGVoa3K446mw9WOlg/tJ5p5+96RTw5zH9HLOp0QJoc/GibJC2QipsiClCoLulSdIM3TidI8SRTnyaKYqhsDWRJSZElMQbkfKEM9IRVbnJMQYqpvPd9Dg5Qq4d4yFVMkKiVTSTeHivo5VNbP1+kN81VSM7Fm1A1Dwzc+7WeDMf2KK4be7DPRm05T/8WOGDrgNN0dqDfgNKIe11Uh3HQax+rjfMwofo+h6v59piGDYDTCsLF/4GoCVTwuAdzIBoB28YaJQEH0mJcudXGkpaUNcpjNZhdvxwPX8+FOur45X+vTWbV48dCSJUuG506dOgz4eEDEGklxTwEwYFRRBaGoOrlRBiBwItinMGsWNihBWtgJaWGMcCIYNaRBgP+FPjsw8CAb0EhxekiSqJKQVhoFv3sIo5oklKQYdw9onuI8CNXiyfuhht9TwEJ3+1QnELVWKy8pPGIe7ZCp0pBUxB8qLynA++fvQrAfnpSQAEFnYQHtTOHxwmMuYO4KNh3NXm9vL3qJAfX6hd5obcV0jpM0tOEjSMFXvNyQJfPeR99MUNtE1ZqCyZJ3aGRkJAEqECJSCcY8LB/oZ3sXhNeWzo2tLnkssqrq+QcTYo0TWmcIABoeHk6owmDY1XeFS469mTzllHXGpjPW+No6g6knGrq7DR5nVxz5tTux8+tLp23T609bZxR8WZY8l+tPCLoBFEbATRR1Ox4+Dxu81BX2p+Pat7bpPTPE3r/1xFUm0eFFBCAeGDMy4jbgkigK7jgZBh+RqWtHuKe3/bvi2L5T1tlpGHhUVfe7vwo9JaGTwphb/aCicD4f4jtLjA/B5xaBDU0HGKGUX07cnpC728I4EiYqpnB67aM6W2zXV6UJT9Tmg/ZBhGv/V+nuBjdcH2TO9qt8HU2MihZkdimGMrx9SEIhIjAtUwBDF3ClO8HNv7/Q5YDaTFCSotzDp+Vw0/dnihOeqc1f9J/JMTy3sT0lT8Vd2Ckm9L6TzG1h+C4iBTTPcMgo5rARAIKAez+Sh6EuUsIXEfBflJsKQBh5WBIHa3SG5j/OFsXZHCWpT1ftW6hnaJiBqg5VVSDUlM+Wa/bEP/lNYcT+c/r4jjBPx3G9pztSdvehZwD5AG6MKwAJAT9o+Gms9lF+r+JBMgwUXIwFPUYwAAS9BowQASCRSiNbY+hfXyS52511hhhnXYmx96w1+kpSp6nPNNh3fYr+Vq2okzYK5NZMvGhE9ODlJ/imaJQisHBW2ExwYUxB6iADU6Jw6ymU0mkEIIoQFqYoCmGBx0OloAm8pHDJAyyEECCE3GaBEDJGRvzzXlKjAv9MkDvI0W/RS8o/vu/ORC6kmEwncr8J2WtSeUo96/haXlK+IUomQfGSCj0TLRloPChc5B1++zARAgcfBxmER8oH0DJ6kCmMa27ShA/IKNdJQyqAky98XBRifnikKAOsASh+9KHfCCK0JZBBiN1zZ0dMKlK+XEUhCdmywLOP4xAUFmBT9RQhgRENmA1Wl3H7CC8PlVSwbI9rh2gRU0nhTQz03rhrH5jCZPQUU7S8qXoKGCVuiAAOhYWBh+gQ0l0gqvIRIoEb9ThGvK2CvxFuA+6lQBgwoh8F12F6cIMB3CQCRnBuhMi4pwAufZTIo0D3n1t468eIZa93zsw70TY148APES8WNMvLd7aIyy1N4rKtzXTZZt42iemWFiF9e4uwYnurtGJbC0m3NIsvWVpx3KJbuaNNt/KNRv3L+U2GNXvaIjOKforOtLXFmve2GjNsTVFrrI2RGcWNkauLG6MyStpi15b/Er/x0IVpuR90GFcdaDe8kH+ePJtbP/D4FpXU0aNHPetz3rb+9vM/z13uYhtyc0p3ZW/YX5iV95YtJ6+8NHtz+T7e5uSV2bI2lVk51m0sLcnZUobzXLbXmpNrKzLn2gpy1lt3Z79StCszq3DHWnOBJXNN/qvmtQWWLHPB9ux1e17LXlfIsQ3luavTt6zs6hhY0dEjbsjMKd+9euu75ZadRz7mpP4FAAD//+6UFlIAAAAGSURBVAMAX+3bhuIhDagAAAAASUVORK5CYII=")} .tag.bad{color:var(--bad);--ico:url("data:image/png;base64,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")}
+.tag.ok::before,.tag.warn::before,.tag.bad::before{display:block}
+.tag.nd{color:var(--mut);font-weight:500}
+.tag.fhir{color:var(--azul)}
+canvas{width:100%;height:110px;display:block;margin-top:10px;border-top:1px solid var(--superficie);padding-top:4px}
+.bio{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--mut)}
+.bio div{background:var(--card);border:1px solid var(--bd);border-radius:3px;padding:6px 8px;display:flex;flex-direction:column-reverse;gap:2px}
+.bio b{display:block;font:700 15px/1.2 var(--tit);letter-spacing:0;text-transform:none;color:var(--navy)}
+.inf>*{min-width:0}
+.inf{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+@media (max-width:800px){.inf{grid-template-columns:1fr} header,main{padding-left:16px;padding-right:16px}}
+.linha{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+.linha label{font-size:12px;color:var(--ardosia)}
+.linha input[type=number]{width:70px;font-family:var(--mono)}
+#log{word-break:break-all;height:220px;overflow:auto;background:var(--superficie);border:1px solid var(--bd);border-radius:3px;padding:8px 10px;font:12px/1.55 var(--mono);color:var(--ardosia);white-space:pre-wrap;margin-top:8px}
+#lista{display:flex;flex-wrap:wrap;gap:8px;padding:10px 24px;background:var(--superficie);border-bottom:1px solid var(--bd)}
+.chip{display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--bd);border-radius:3px;padding:3px 4px 3px 10px;font-size:12px;color:var(--navy)}
+.chip i{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.chip small{color:var(--mut);font-family:var(--mono)}
+.chip button{border:0;padding:2px 7px;border-radius:2px;background:var(--superficie);color:var(--ardosia)}
+#aviso{display:none;background:#fff;color:var(--navy);border-left:3px solid var(--laranja);border-bottom:1px solid var(--bd);padding:10px 20px;font-size:13px}
+</style>
+</head>
+<body>
+<div id="aviso"></div>
+<header>
+  <img class="logo" src="data:image/webp;base64,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" alt="mare.IA">
+  <div class="acoes">
+    <span id="estado"><i></i><span id="estadoTx">Desconectado</span></span>
+    <button class="pri" id="btBle">+ Bluetooth</button>
+    <button id="btUsb">+ USB</button>
+    <button id="btDemo">Simular</button>
+    <button id="btSair" disabled>Desconectar todos</button>
+  </div>
+</header>
+<div id="lista"><span class="sub">Nenhum aparelho conectado. Clique em "+ Bluetooth" uma vez para cada ESP32.</span></div>
+
+<main>
+  <div class="titulo"><h1>Painel de Saúde · ESP32</h1><span class="versao">v2 · HL7 FHIR</span></div>
+  <div class="grade">
+    <section class="card">
+      <h2>Glicosímetro <span class="tag nd" id="tagGLI">sem dados</span></h2>
+      <div class="valor" id="vGLI">--<small> mg/dL</small></div>
+      <div class="sub" id="sGLI"></div>
+      <canvas id="cGLI"></canvas>
+    </section>
+    <section class="card">
+      <h2>Termômetro <span class="tag nd" id="tagTEMP">sem dados</span></h2>
+      <div class="valor" id="vTEMP">--<small> °C</small></div>
+      <div class="sub" id="sTEMP"></div>
+      <canvas id="cTEMP"></canvas>
+    </section>
+    <section class="card">
+      <h2>Pressão arterial <span class="tag nd" id="tagPA">sem dados</span></h2>
+      <div class="valor" id="vPA">--<small> mmHg</small></div>
+      <div class="sub" id="sPA"></div>
+      <canvas id="cPA"></canvas>
+    </section>
+    <section class="card">
+      <h2>Bioimpedância <span class="tag nd" id="tagBIO">sem dados</span></h2>
+      <div class="valor" id="vBIO">--<small> kg</small></div>
+      <div class="sub" id="sBIO"></div>
+      <div class="bio">
+        <div>IMC<b id="bImc">--</b></div>
+        <div>Gordura<b id="bGord">--</b></div>
+        <div>Água<b id="bAgua">--</b></div>
+        <div>Músculo<b id="bMusc">--</b></div>
+        <div>Impedância<b id="bImp">--</b></div>
+        <div>Leituras<b id="bN">0</b></div>
+      </div>
+      <canvas id="cBIO"></canvas>
+    </section>
+  </div>
+
+  <div class="inf">
+    <section class="card">
+      <h2>Controle dos aparelhos</h2>
+      <div class="linha">
+        <button data-cmd="LER">Ler agora</button>
+        <button data-cmd="STATUS">Status</button>
+        <button id="btCsv">Exportar CSV</button>
+        <button id="btFhir">Exportar FHIR</button>
+        <button id="btLimpar">Limpar</button>
+      </div>
+      <div class="linha">
+        <label>Intervalo (s)</label>
+        <label>GLI <input type="number" min="0" id="iGLI" value="15"></label>
+        <label>TEMP <input type="number" min="0" id="iTEMP" value="10"></label>
+        <label>PA <input type="number" min="0" id="iPA" value="20"></label>
+        <label>BIO <input type="number" min="0" id="iBIO" value="30"></label>
+        <button id="btInt">Aplicar</button>
+      </div>
+      <div class="linha">
+        <input id="cmd" placeholder="Comando livre, ex.: INT=5" style="flex:1">
+        <button class="pri" id="btCmd">Enviar</button>
+      </div>
+      <p class="sub">0 desativa o envio automático. Os comandos vão para todos os aparelhos conectados, e cada um só aplica o que é dele.</p>
+    </section>
+    <section class="card">
+      <h2>Mensagens recebidas</h2>
+      <div id="log"></div>
+    </section>
+  </div>
+
+  <section class="card fhir">
+    <h2>Recurso FHIR <span class="tag nd" id="tagFHIR">sem dados</span></h2>
+    <div class="resumo">
+      <div>Observações<b id="fObs">0</b></div>
+      <div>Aparelhos (Device)<b id="fDev">0</b></div>
+      <div>Enviadas ao servidor<b id="fEnv" class="ok">0</b></div>
+    </div>
+    <div class="linha">
+      <label>Mostrar</label>
+      <select id="fhirSel">
+        <option value="obs">Última Observation recebida</option>
+        <option value="pac">Patient (paciente simulado)</option>
+        <option value="dev">Device dos aparelhos conectados</option>
+      </select>
+    </div>
+    <pre id="fhirJson">Nenhuma leitura ainda. Conecte um aparelho ou clique em Simular.</pre>
+    <div class="linha">
+      <input id="fhirUrl" placeholder="Endereço base do servidor FHIR, ex.: http://localhost:8080/fhir" style="flex:1">
+      <button class="pri" id="btEnviarFhir">Enviar ao servidor</button>
+    </div>
+    <p class="sub">Cada leitura vira um recurso Observation (LOINC e UCUM). O envio só acontece quando você clica e manda apenas as observações ainda não enviadas, num Bundle do tipo transaction. Use somente dados simulados em servidores públicos de teste.</p>
+  </section>
+</main>
+
+<script>
+const SVC = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+const RX  = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+const TX  = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+const $ = id => document.getElementById(id);
+const MAX = 40;                         // pontos em cada gráfico
+const hist = {GLI:[], TEMP:[], PA:[], BIO:[]};
+const registros = [];                   // tudo que chegou, para o CSV
+const conns = new Set();              // aparelhos conectados ao mesmo tempo
+const enc = new TextEncoder();
+
+/* ---------- Classificação simples das medidas ---------- */
+function faixa(tipo, d){
+  if (tipo==="GLI"){ const g=d.glicose;
+    if (g<70) return ["bad","baixa"]; if (g<100) return ["ok","normal"];
+    if (g<126) return ["warn","elevada"]; return ["bad","alta"]; }
+  if (tipo==="TEMP"){ const t=d.temp;
+    if (t<35.5) return ["warn","baixa"]; if (t<=37.5) return ["ok","normal"];
+    if (t<38) return ["warn","subfebril"]; return ["bad","febre"]; }
+  if (tipo==="PA"){ const s=d.sis, di=d.dia;
+    if (s>=140||di>=90) return ["bad","alta"]; if (s>=120||di>=80) return ["warn","elevada"]; return ["ok","normal"]; }
+  const i=d.imc;
+  if (i<18.5) return ["warn","abaixo do peso"]; if (i<25) return ["ok","IMC normal"];
+  if (i<30) return ["warn","sobrepeso"]; return ["bad","obesidade"];
+}
+function tag(tipo, d){ const [c,t]=faixa(tipo,d); const e=$("tag"+tipo); e.className="tag "+c; e.textContent=t; }
+const hora = () => new Date().toLocaleTimeString("pt-BR");
+
+/* ---------- Tratamento de cada linha JSON ---------- */
+function linha(txt, c){
+  txt = txt.trim(); if (!txt) return;
+  let d; try { d = JSON.parse(txt); } catch { log("["+c.nome+"] "+txt); return; }
+  const origem = d.id || c.nome;
+  log("["+origem+"] "+txt);
+  if (d.intervalos_s){ for (const k in d.intervalos_s) if ($("i"+k)) $("i"+k).value = d.intervalos_s[k];
+    fhirAparelho(origem, {fw:d.fw, modelo:d.modelo, tipos:Object.keys(d.intervalos_s), via:c.via}); return; }
+  const mapa = {glicosimetro:"GLI", termometro:"TEMP", pressao:"PA", bioimpedancia:"BIO"};
+  const tipo = mapa[d.disp]; if (!tipo) return;
+  registros.push({hora:new Date().toISOString(), aparelho:origem, ...d});
+  const h = hist[tipo];
+  if (tipo==="GLI"){ $("vGLI").innerHTML = d.glicose+"<small> mg/dL</small>"; h.push([d.glicose]); }
+  if (tipo==="TEMP"){ $("vTEMP").innerHTML = d.temp.toFixed(1)+"<small> °C</small>"; h.push([d.temp]); }
+  if (tipo==="PA"){ $("vPA").innerHTML = d.sis+"/"+d.dia+"<small> mmHg</small>";
+    $("sPA").dataset.p = "Pulso "+d.pulso+" bpm"; h.push([d.sis,d.dia]); }
+  if (tipo==="BIO"){ $("vBIO").innerHTML = d.peso.toFixed(1)+"<small> kg</small>";
+    $("bImc").textContent=d.imc.toFixed(1); $("bGord").textContent=d.gordura.toFixed(1)+"%";
+    $("bAgua").textContent=d.agua.toFixed(1)+"%"; $("bMusc").textContent=d.musculo.toFixed(1)+" kg";
+    $("bImp").textContent=d.imp+" Ω"; $("bN").textContent=registros.filter(r=>r.disp==="bioimpedancia").length; h.push([d.peso]); }
+  if (h.length>MAX) h.shift();
+  const s = $("s"+tipo); if (s) s.textContent = (s.dataset.p ? s.dataset.p+" · " : "")+origem+" · "+hora();
+  tag(tipo, d); grafico(tipo);
+  fhirLeitura(tipo, d, origem, c.via);
+}
+function chegou(c, pedaco){              // junta os pedaços de cada aparelho até o fim de linha
+  c.buf += pedaco; let i;
+  while ((i = c.buf.indexOf("\n")) >= 0){ linha(c.buf.slice(0,i), c); c.buf = c.buf.slice(i+1); }
+}
+function log(t){ const l=$("log"); l.textContent += hora()+"  "+t+"\n";
+  if (l.textContent.length>20000) l.textContent=l.textContent.slice(-15000); l.scrollTop=l.scrollHeight; }
+
+/* ---------- Gráfico de linha simples em canvas ---------- */
+function grafico(tipo){
+  const c=$("c"+tipo), x=c.getContext("2d"), r=devicePixelRatio||1;
+  const W=c.clientWidth, H=c.clientHeight; c.width=W*r; c.height=H*r; x.scale(r,r); x.clearRect(0,0,W,H);
+  const h=hist[tipo]; if (!h.length) return;
+  const css=getComputedStyle(document.documentElement), cores=[css.getPropertyValue("--l1"),css.getPropertyValue("--l2")];
+  const todos=h.flat(); let mn=Math.min(...todos), mx=Math.max(...todos);
+  const folga=(mx-mn)*0.15 || 1; mn-=folga; mx+=folga;
+  const px=i=>30+i*(W-36)/Math.max(MAX-1,1), py=v=>6+(H-18)*(1-(v-mn)/(mx-mn));
+  x.fillStyle=css.getPropertyValue("--mut"); x.font="10px system-ui";
+  x.fillText(mx.toFixed(tipo==="TEMP"||tipo==="BIO"?1:0),0,12); x.fillText(mn.toFixed(tipo==="TEMP"||tipo==="BIO"?1:0),0,H-8);
+  for (let s=0; s<h[0].length; s++){
+    x.strokeStyle=cores[s]; x.lineWidth=2; x.beginPath();
+    h.forEach((p,i)=> i ? x.lineTo(px(i),py(p[s])) : x.moveTo(px(i),py(p[s])));
+    x.stroke();
+    const u=h[h.length-1]; x.fillStyle=cores[s]; x.beginPath(); x.arc(px(h.length-1),py(u[s]),3,0,7); x.fill();
+  }
+}
+addEventListener("resize", ()=>Object.keys(hist).forEach(grafico));
+
+/* ---------- Conexões (várias ao mesmo tempo) ---------- */
+function atualizaLista(){
+  const l=$("lista"); l.innerHTML="";
+  if (!conns.size) l.innerHTML='<span class="sub">Nenhum aparelho conectado. Clique em "+ Bluetooth" uma vez para cada ESP32.</span>';
+  conns.forEach(c=>{ const e=document.createElement("span"); e.className="chip";
+    e.innerHTML='<i></i>'+c.nome+' <small>'+c.via+'</small><button title="Desconectar">×</button>';
+    e.querySelector("button").onclick=()=>c.fechar(); l.appendChild(e); });
+  $("estado").className = conns.size ? "on" : "";
+  $("estadoTx").textContent = conns.size ? conns.size+(conns.size>1?" aparelhos conectados":" aparelho conectado") : "Desconectado";
+  $("btSair").disabled = !conns.size;
+}
+function adicionar(c){ c.buf=""; conns.add(c); atualizaLista(); log("Conectado: "+c.nome+" ("+c.via+")"); }
+function remover(c){ if (conns.delete(c)){ atualizaLista(); log("Desconectado: "+c.nome); } }
+
+$("btBle").onclick = async () => {
+  if (!navigator.bluetooth) return alerta("Este navegador não tem Web Bluetooth. Use o Google Chrome ou o Microsoft Edge.");
+  try {
+    const dev = await navigator.bluetooth.requestDevice({filters:[{services:[SVC]}], optionalServices:[SVC]});
+    const c = {nome: dev.name || "ESP32", via:"Bluetooth"};
+    dev.addEventListener("gattserverdisconnected", ()=>remover(c));
+    const svc = await (await dev.gatt.connect()).getPrimaryService(SVC);
+    const tx = await svc.getCharacteristic(TX), rx = await svc.getCharacteristic(RX);
+    const dec = new TextDecoder();
+    tx.addEventListener("characteristicvaluechanged", e => chegou(c, dec.decode(e.target.value)));
+    await tx.startNotifications();
+    c.enviar = cmd => rx.writeValue(enc.encode(cmd));
+    c.fechar = () => dev.gatt.disconnect();
+    adicionar(c); c.enviar("STATUS");
+  } catch(e){ if (e.name!=="NotFoundError") log("Erro Bluetooth: "+e.message); }
+};
+
+$("btUsb").onclick = async () => {
+  if (!navigator.serial) return alerta("Este navegador não tem Web Serial. Use o Google Chrome ou o Microsoft Edge.");
+  let c;
+  try {
+    const porta = await navigator.serial.requestPort();
+    await porta.open({baudRate:115200});
+    const te = new TextEncoderStream(); const fimEscrita = te.readable.pipeTo(porta.writable).catch(()=>{});
+    const escritor = te.writable.getWriter();
+    const td = new TextDecoderStream(); const fimLeitura = porta.readable.pipeTo(td.writable).catch(()=>{});
+    const leitor = td.readable.getReader();
+    c = {nome:"USB "+(conns.size+1), via:"USB"};
+    c.enviar = cmd => escritor.write(cmd+"\n");
+    c.fechar = async () => { try{ await leitor.cancel(); await escritor.close(); await fimLeitura; await fimEscrita; await porta.close(); }catch{} remover(c); };
+    adicionar(c); setTimeout(()=>c.enviar("STATUS"), 1500);
+    while (true){ const {value, done} = await leitor.read(); if (done) break;
+      chegou(c, value);
+      const m = value.match(/"id":"([^"]+)"/); if (m && c.nome!==m[1]){ c.nome=m[1]; atualizaLista(); } }
+  } catch(e){ if (e.name!=="NotFoundError") log("Erro USB: "+e.message+" (feche o monitor serial do VS Code)"); }
+  if (c) remover(c);
+};
+
+$("btDemo").onclick = () => {                // um aparelho falso de cada tipo, sem ESP32
+  const r=(a,b)=>a+Math.random()*(b-a), f=v=>+v.toFixed(1);
+  const tipos = [
+    ["Glicosimetro-DEMO", 15e2, (s)=>{ s.g=Math.min(140,Math.max(70,(s.g??95)+r(-6,6))); return {disp:"glicosimetro",glicose:Math.round(Math.random()<.05?r(160,240):s.g)}; }],
+    ["Termometro-DEMO", 2e3, (s)=>{ s.t=Math.min(37.3,Math.max(35.9,(s.t??36.6)+r(-.15,.15))); return {disp:"termometro",temp:f(Math.random()<.04?r(37.8,39.2):s.t)}; }],
+    ["Pressao-DEMO", 25e2, (s)=>{ s.s=(s.s??118)+r(-4,4); s.d=(s.d??77)+r(-3,3); s.p=(s.p??72)+r(-3,3);
+       return {disp:"pressao",sis:Math.round(s.s),dia:Math.round(Math.min(s.d,s.s-25)),pulso:Math.round(s.p)}; }],
+    ["Balanca-DEMO", 3e3, (s)=>{ s.kg=(s.kg??72)+r(-.2,.2); const imc=s.kg/2.89, g=1.2*imc+8.05-16.2+r(-.5,.5);
+       return {disp:"bioimpedancia",peso:f(s.kg),imc:f(imc),gordura:f(g),agua:f((100-g)*.73),musculo:f(s.kg*(1-g/100)*.95),imp:Math.round(420+g*4)}; }]
+  ];
+  tipos.forEach(([nome, ms, gera]) => {
+    const est={}, c={nome, via:"simulação"};
+    const envia = () => linha(JSON.stringify({id:nome, ...gera(est)}), c);
+    const timer = setInterval(envia, ms);
+    c.enviar = async () => log("("+nome+": comando ignorado na simulação)");
+    c.fechar = () => { clearInterval(timer); remover(c); };
+    adicionar(c); envia();
+  });
+};
+
+$("btSair").onclick = () => [...conns].forEach(c => c.fechar());
+
+async function enviar(cmd){                   // manda o comando para todos os aparelhos
+  if (!conns.size) return log("Conecte primeiro para enviar comandos");
+  log("> "+cmd+" (para "+conns.size+")");
+  for (const c of conns){ try { await c.enviar(cmd); } catch(e){ log("Erro ao enviar para "+c.nome+": "+e.message); } }
+}
+document.querySelectorAll("[data-cmd]").forEach(b => b.onclick = () => enviar(b.dataset.cmd));
+$("btCmd").onclick = () => { const v=$("cmd").value.trim(); if (v){ enviar(v); $("cmd").value=""; } };
+$("cmd").addEventListener("keydown", e => { if (e.key==="Enter") $("btCmd").click(); });
+$("btInt").onclick = async () => { for (const k of ["GLI","TEMP","PA","BIO"]){ await enviar(k+"="+($("i"+k).value||0)); await new Promise(r=>setTimeout(r,150)); } };
+
+$("btCsv").onclick = () => {
+  if (!registros.length) return log("Ainda não há dados para exportar");
+  const cols = ["hora","aparelho","disp","glicose","temp","sis","dia","pulso","peso","imc","gordura","agua","musculo","imp"];
+  const csv = [cols.join(";")].concat(registros.map(r => cols.map(c => r[c] ?? "").join(";"))).join("\n");
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿"+csv],{type:"text/csv"}));
+  a.download = "leituras_saude.csv"; a.click();
+};
+$("btLimpar").onclick = () => { $("log").textContent=""; Object.keys(hist).forEach(k=>{hist[k]=[]; grafico(k);}); registros.length=0; fhirLimpar(); };
+
+/* ---------- HL7 FHIR: conversão das leituras ----------
+   O ESP32 continua mandando o JSON curto. Aqui cada leitura vira um ou mais
+   recursos Observation, ligados a um Patient simulado e ao Device que mediu. */
+const FHIR = {
+  LOINC: "http://loinc.org",
+  UCUM: "http://unitsofmeasure.org",
+  CAT: "http://terminology.hl7.org/CodeSystem/observation-category",
+  INTERP: "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+  LOCAL: "https://mareia.agrosus.example/fhir/CodeSystem/medidas-emulador-iot",   // códigos sem equivalente LOINC
+  ID_PAC: "https://mareia.agrosus.example/fhir/sid/paciente-teste",
+  ID_DEV: "https://mareia.agrosus.example/fhir/sid/dispositivo-ble",
+  PERFIL: "http://hl7.org/fhir/StructureDefinition/"
+};
+const TESTE = {tag:[{system:"http://terminology.hl7.org/CodeSystem/v3-ActReason", code:"HTEST", display:"test health data"}]};
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID() :
+  "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c => (c ^ Math.random()*16 >> c/4).toString(16)));
+
+const fhirPac = {
+  url: "urn:uuid:" + uuid(),
+  recurso: {
+    resourceType: "Patient", meta: TESTE,
+    identifier: [{system: FHIR.ID_PAC, value: "PACIENTE-SIMULADO-001"}],
+    active: true,
+    name: [{use: "usual", text: "Paciente Simulado", family: "Simulado", given: ["Paciente"]}],
+    gender: "male"
+  }
+};
+const fhirDevs = new Map();      // nome do aparelho -> {url, recurso}
+const fhirObs = [];              // {url, recurso, enviada}
+const NOME_TIPO = {GLI:"Glicosímetro", TEMP:"Termômetro", PA:"Medidor de pressão arterial", BIO:"Balança de bioimpedância"};
+
+function fhirAparelho(nome, info = {}){
+  let dv = fhirDevs.get(nome);
+  if (!dv){
+    dv = {url: "urn:uuid:" + uuid(), recurso: {
+      resourceType: "Device", meta: TESTE,
+      identifier: [{system: FHIR.ID_DEV, value: nome}],
+      status: "active",
+      manufacturer: "Emulador IoT mare.IA / AgroSUS",
+      deviceName: [{name: nome, type: "user-friendly-name"}],
+      patient: {reference: fhirPac.url}
+    }};
+    fhirDevs.set(nome, dv);
+  }
+  const r = dv.recurso;
+  if (info.modelo) r.modelNumber = info.modelo;
+  if (info.fw) r.version = [{type: {text: "firmware"}, value: info.fw}];
+  if (info.tipos && info.tipos.length){
+    r.type = {text: info.tipos.map(t => NOME_TIPO[t] || t).join(", ")};
+    if (info.tipos.length === 1 && !r.deviceName.some(n => n.type === "model-name"))
+      r.deviceName.push({name: NOME_TIPO[info.tipos[0]] || info.tipos[0], type: "model-name"});
+  }
+  if (info.via === "simulação") r.note = [{text: "Aparelho virtual criado pelo botão Simular do painel."}];
+  fhirAtualiza();
+  return dv;
+}
+
+// faixa() do painel -> código de interpretação HL7
+function fhirInterp(tipo, d){
+  const [c, txt] = faixa(tipo, d);
+  const baixo = /baixa|abaixo/.test(txt);
+  const cod = c === "ok" ? ["N","Normal"] : baixo ? (c === "bad" ? ["LU","Significantly low"] : ["L","Low"])
+            : (c === "bad" ? ["HU","Significantly high"] : ["H","High"]);
+  return [{coding: [{system: FHIR.INTERP, code: cod[0], display: cod[1]}], text: txt}];
+}
+
+const qtd = (v, un, cod) => ({value: v, unit: un, system: FHIR.UCUM, code: cod});
+const loinc = (code, display, texto) => ({coding: [{system: FHIR.LOINC, code, display}], text: texto});
+const cat = (code, display) => [{coding: [{system: FHIR.CAT, code, display}]}];
+const VITAL = cat("vital-signs", "Vital Signs"), EXAME = cat("exam", "Exam"), LAB = cat("laboratory", "Laboratory");
+
+function fhirLeitura(tipo, d, origem, via){
+  const dv = fhirAparelho(origem, {via});
+  const quando = new Date().toISOString();
+  const base = (perfil, categoria, code) => {
+    const o = {resourceType: "Observation", meta: {...TESTE}, status: "final", category: categoria, code,
+      subject: {reference: fhirPac.url}, effectiveDateTime: quando, device: {reference: dv.url}};
+    if (perfil) o.meta = {...TESTE, profile: [FHIR.PERFIL + perfil]};
+    return o;
+  };
+  const novas = [];
+  if (tipo === "GLI"){
+    const o = base(null, LAB, loinc("41653-7", "Glucose [Mass/volume] in Capillary blood by Glucometer", "Glicose capilar"));
+    o.valueQuantity = qtd(d.glicose, "mg/dL", "mg/dL"); o.interpretation = fhirInterp(tipo, d); novas.push(o);
+  }
+  if (tipo === "TEMP"){
+    const o = base("bodytemp", VITAL, loinc("8310-5", "Body temperature", "Temperatura corporal"));
+    o.valueQuantity = qtd(d.temp, "°C", "Cel"); o.interpretation = fhirInterp(tipo, d); novas.push(o);
+  }
+  if (tipo === "PA"){
+    const o = base("bp", VITAL, loinc("85354-9", "Blood pressure panel with all children optional", "Pressão arterial"));
+    o.component = [
+      {code: loinc("8480-6", "Systolic blood pressure", "Sistólica"), valueQuantity: qtd(d.sis, "mmHg", "mm[Hg]")},
+      {code: loinc("8462-4", "Diastolic blood pressure", "Diastólica"), valueQuantity: qtd(d.dia, "mmHg", "mm[Hg]")}];
+    o.interpretation = fhirInterp(tipo, d); novas.push(o);
+    if (d.pulso != null){
+      const p = base("heartrate", VITAL, loinc("8867-4", "Heart rate", "Pulso"));
+      p.valueQuantity = qtd(d.pulso, "bpm", "/min"); novas.push(p);
+    }
+  }
+  if (tipo === "BIO"){
+    const peso = base("bodyweight", VITAL, loinc("29463-7", "Body weight", "Peso"));
+    peso.valueQuantity = qtd(d.peso, "kg", "kg"); novas.push(peso);
+    const imc = base("bmi", VITAL, loinc("39156-5", "Body mass index (BMI) [Ratio]", "IMC"));
+    imc.valueQuantity = qtd(d.imc, "kg/m2", "kg/m2"); imc.interpretation = fhirInterp(tipo, d); novas.push(imc);
+    const ex = (code, display, texto, v, un, ucum) => { const o = base(null, EXAME, loinc(code, display, texto));
+      o.valueQuantity = qtd(v, un, ucum); o.method = {text: "Bioimpedância"}; novas.push(o); };
+    ex("77233-5", "Percentage of body fat by Bioelectrical impedance analysis", "Gordura corporal", d.gordura, "%", "%");
+    ex("101684-9", "Percentage of body water", "Água corporal", d.agua, "%", "%");
+    ex("73964-9", "Body muscle mass Calculated", "Massa muscular", d.musculo, "kg", "kg");
+    const imp = base(null, EXAME, {coding: [{system: FHIR.LOCAL, code: "impedancia-corporal", display: "Impedância corporal total"}],
+      text: "Impedância corporal"});
+    imp.valueQuantity = qtd(d.imp, "Ω", "Ohm"); imp.method = {text: "Bioimpedância"}; novas.push(imp);
+  }
+  novas.forEach(r => fhirObs.push({url: "urn:uuid:" + uuid(), recurso: r, enviada: false}));
+  fhirAtualiza();
+}
+
+// Bundle transaction: Patient e Device com criação condicional (não duplica no servidor)
+function fhirBundle(lista){
+  const usados = new Set(lista.map(o => o.recurso.device.reference));
+  const cond = (tipo, id) => ({method: "POST", url: tipo, ifNoneExist: "identifier=" + encodeURIComponent(id.system + "|" + id.value)});
+  const entry = [{fullUrl: fhirPac.url, resource: fhirPac.recurso, request: cond("Patient", fhirPac.recurso.identifier[0])}];
+  fhirDevs.forEach(dv => { if (usados.has(dv.url))
+    entry.push({fullUrl: dv.url, resource: dv.recurso, request: cond("Device", dv.recurso.identifier[0])}); });
+  lista.forEach(o => entry.push({fullUrl: o.url, resource: o.recurso, request: {method: "POST", url: "Observation"}}));
+  return {resourceType: "Bundle", meta: TESTE, type: "transaction", timestamp: new Date().toISOString(), entry};
+}
+
+function fhirAtualiza(){
+  $("fObs").textContent = fhirObs.length; $("fDev").textContent = fhirDevs.size;
+  $("fEnv").textContent = fhirObs.filter(o => o.enviada).length;
+  const t = $("tagFHIR");
+  if (fhirObs.length){ t.className = "tag fhir"; t.textContent = fhirObs.length + " observações"; }
+  else { t.className = "tag nd"; t.textContent = "sem dados"; }
+  const v = $("fhirSel").value; let x;
+  if (v === "pac") x = fhirPac.recurso;
+  else if (v === "dev") x = fhirDevs.size ? [...fhirDevs.values()].map(d => d.recurso) : null;
+  else x = fhirObs.length ? fhirObs[fhirObs.length - 1].recurso : null;
+  $("fhirJson").textContent = x ? JSON.stringify(x, null, 2) : "Nenhuma leitura ainda. Conecte um aparelho ou clique em Simular.";
+}
+$("fhirSel").onchange = fhirAtualiza;
+
+function fhirLimpar(){ fhirObs.length = 0; fhirDevs.clear(); conns.forEach(c => fhirAparelho(c.nome, {via: c.via})); fhirAtualiza(); }
+
+$("btFhir").onclick = () => {
+  if (!fhirObs.length) return log("Ainda não há recursos FHIR para exportar");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(fhirBundle(fhirObs), null, 2)], {type: "application/fhir+json"}));
+  a.download = "leituras_saude_fhir.json"; a.click();
+  log("FHIR: Bundle exportado com " + fhirObs.length + " observações");
+};
+
+$("btEnviarFhir").onclick = async () => {
+  let base = $("fhirUrl").value.trim().replace(/\/+$/, "");
+  if (!/^https?:\/\//.test(base)) return log("FHIR: informe o endereço base do servidor (http:// ou https://)");
+  const pend = fhirObs.filter(o => !o.enviada);
+  if (!pend.length) return log("FHIR: não há observações novas para enviar");
+  const bt = $("btEnviarFhir"); bt.disabled = true;
+  log("FHIR: enviando " + pend.length + " observações para " + base);
+  try {
+    const r = await fetch(base, {method: "POST", body: JSON.stringify(fhirBundle(pend)),
+      headers: {"Content-Type": "application/fhir+json", "Accept": "application/fhir+json"}});
+    const resp = await r.json().catch(() => null);
+    if (!r.ok){
+      const msg = resp && resp.issue ? resp.issue.map(i => i.diagnostics || i.code).join(" | ") : r.statusText;
+      log("FHIR: servidor recusou (HTTP " + r.status + "): " + msg);
+    } else {
+      pend.forEach(o => o.enviada = true);
+      const st = (resp && resp.entry || []).map(e => e.response && e.response.status).filter(Boolean);
+      const criados = st.filter(s => s.startsWith("201")).length;
+      log("FHIR: OK (HTTP " + r.status + "), " + st.length + " respostas, " + criados + " recursos criados");
+    }
+  } catch (e) {
+    log("FHIR: falha de conexão com o servidor (" + e.message + "). Confira o endereço e se o servidor aceita CORS.");
+  }
+  bt.disabled = false; fhirAtualiza();
+};
+fhirAtualiza();
+
+function alerta(m){ const a=$("aviso"); a.textContent=m; a.style.display="block"; }
+if (!navigator.bluetooth && !navigator.serial) alerta("Abra esta página no Google Chrome ou no Microsoft Edge para conectar ao ESP32. O Safari e o Firefox não oferecem Bluetooth nem USB pela web.");
+</script>
+</body>
+</html>
